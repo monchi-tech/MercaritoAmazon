@@ -1,0 +1,8 @@
+streamlit
+selenium
+pandas
+openpyxl
+
+# Supabaseと連携するから、こいつらもリストに入れとくぜ！
+st-supabase-connection
+supabase
