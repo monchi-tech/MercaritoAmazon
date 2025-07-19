@@ -90,10 +90,8 @@ def run_mercari_scraper(keyword, max_pages, user_id, supabase_client):
     options.add_experimental_option('useAutomationExtension', False)
     options.add_argument('user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
     
-    # (ここは省略... 前のコードと全く同じだ)
-    # ...
     driver = webdriver.Chrome(options=options)
-    search_url = f"https://www.mercari.com/jp/search/?keyword= {keyword.replace(' ', '%20')}"
+    search_url = f"https://www.mercari.com/jp/search/?keyword=  {keyword.replace(' ', '%20')}"
     yield f"[ログ] 次のURLにアクセスします: {search_url}"
     driver.get(search_url)
     time.sleep(3)
@@ -118,8 +116,7 @@ def run_mercari_scraper(keyword, max_pages, user_id, supabase_client):
                 scroll_count += 1
             if scroll_count >= max_scrolls:
                 yield "[警告] スクロール回数が上限に達しました。処理を続行します。"
-
-            item_list_elements = driver.find_elements(By.CSS_SELECTOR, 'li[data-testid="item-cell"] a')
+                item_list_elements = driver.find_elements(By.CSS_SELECTOR, 'li[data-testid="item-cell"] a')
             for a_tag in item_list_elements:
                 href = a_tag.get_attribute('href')
                 if href and '/item/' in href:
@@ -242,21 +239,74 @@ except Exception as e:
 
 # ▲▲▲▲▲▲ ここまでが最終診断コード ▲▲▲▲▲▲
 
+# -------------------------------------------------------------------
+# 独自の認証機能
+# -------------------------------------------------------------------
+st.title("🔐 ログイン")
 
-# --- 認証部分は変更なし ---
-if not st.user.email:
-    st.warning("このアプリを使うには、まず右上のメニューからログインしてくれ！")
-    st.stop()
+# セッション状態の初期化
+if 'authenticated' not in st.session_state:
+    st.session_state.authenticated = False
+    st.session_state.user_id = None
 
-user_id = st.user.email
-st.success(f"ようこそ、{user_id}！準備はいいか？")
+# ログイン画面
+if not st.session_state.authenticated:
+    with st.form("login_form"):
+        st.markdown("### メールアドレスでログイン")
+        email = st.text_input("メールアドレス", placeholder="your.email@example.com")
+        password = st.text_input("パスワード", type="password", placeholder="任意のパスワード")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            login_button = st.form_submit_button("ログイン", use_container_width=True, type="primary")
+        with col2:
+            signup_button = st.form_submit_button("新規登録", use_container_width=True)
+        
+        if login_button or signup_button:
+            if email and password:
+                # 簡易的な検証（本番環境では適切な認証を実装）
+                if "@" in email and len(password) >= 4:
+                    st.session_state.authenticated = True
+                    st.session_state.user_id = email
+                    st.success(f"ようこそ、{email}さん！")
+                    st.rerun()
+                else:
+                    st.error("メールアドレスまたはパスワードが正しくありません")
+            else:
+                st.warning("メールアドレスとパスワードを入力してください")
+    
+    st.stop()  # ログインしていない場合はここで処理を停止
 
+# ログイン済みの場合
+user_id = st.session_state.user_id
+st.success(f"ログイン中: {user_id}")
+
+# ログアウトボタン
+if st.button("ログアウト", key="logout_main"):
+    st.session_state.authenticated = False
+    st.session_state.user_id = None
+    st.rerun()
+
+st.divider()
 
 # -------------------------------------------------------------------
-# NGリスト管理機能（サイドバーに実装！）（変更なし）
+# メインアプリケーション
+# -------------------------------------------------------------------
+st.title('メルカリお宝探しツール（Web版）')
+
+# -------------------------------------------------------------------
+# NGリスト管理機能（サイドバーに実装！）
 # -------------------------------------------------------------------
 with st.sidebar:
     st.header(f"⚙️ {user_id} の設定")
+    
+    # サイドバーにもログアウトボタン
+    if st.button("ログアウト", key="logout_sidebar"):
+        st.session_state.authenticated = False
+        st.session_state.user_id = None
+        st.rerun()
+    
+    st.divider()
 
     # --- NGセラー管理 ---
     st.subheader("🚫 NGセラーリスト")
@@ -285,7 +335,6 @@ with st.sidebar:
     except Exception as e:
         st.error(f"NGセラーの読み込みに失敗: {e}")
 
-
     # --- NGワード管理 ---
     st.subheader("🤫 NGワードリスト")
     try:
@@ -303,7 +352,7 @@ with st.sidebar:
 
         if not word_df.empty:
             word_to_delete = st.selectbox("削除するNGワードを選択", options=word_df.index, format_func=lambda x: word_df.loc[x, "word"], index=None)
-            if st.button("削除", type="primary"):
+            if st.button("削除", type="primary", key="delete_word"):
                 if word_to_delete is not None:
                     deleted_word = word_df.loc[word_to_delete, "word"]
                     conn.table("ng_words").delete().eq("id", int(word_to_delete)).execute()
@@ -312,14 +361,11 @@ with st.sidebar:
     except Exception as e:
         st.error(f"NGワードの読み込みに失敗: {e}")
 
-
 # -------------------------------------------------------------------
-# メイン画面（スクレイピング実行）（変更なし）
+# メイン画面（スクレイピング実行）
 # -------------------------------------------------------------------
-st.title('メルカリお宝探しツール（Web版）')
 st.markdown("メルカリから指定したキーワードで商品を検索し、条件に合うものだけをリストアップします。")
-# (ここは省略... 前のコードと全く同じだ)
-# ...
+
 with st.form("search_form"):
     st.info(f"`config.py` の設定をデフォルト値として使用しています。")
     keyword = st.text_input('1. 検索キーワードを入力してください', value=config.SEARCH_KEYWORD)
@@ -360,9 +406,8 @@ if submitted and not st.session_state.running:
         progress_bar.progress(1.0, "処理が完了しました！")
         st.rerun()
 
-
 # -------------------------------------------------------------------
-# 結果表示とExcelダウンロード部分（変更なし）
+# 結果表示とExcelダウンロード部分
 # -------------------------------------------------------------------
 if st.session_state.results:
     st.subheader('🎉 検索結果')
@@ -370,7 +415,6 @@ if st.session_state.results:
     st.dataframe(df_raw)
     
     if not df_raw.empty:
-        # (この部分は前回と同じなので省略)
         wb = openpyxl.Workbook()
         ws = wb.active
         ws.title = "AmazonUpload"
