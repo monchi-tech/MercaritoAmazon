@@ -13,8 +13,8 @@ import pandas as pd
 import openpyxl
 import base64
 
-# ▼▼▼ Supabaseと連携するための武器 ▼▼▼
-from st_supabase_connection import SupabaseConnection
+# ▼▼▼ 使う武器を変更！st.connectionの代わりに、もっと原始的な武器を使うぜ！ ▼▼▼
+from supabase import create_client, Client
 
 # ===================================================================
 # config.py を信じて直接読み込む！
@@ -23,7 +23,7 @@ import config
 # ===================================================================
 
 # -------------------------------------------------------------------
-# ヘルパー関数群（ファイルI/Oは完全に消滅！）
+# ヘルパー関数群（変更なし）
 # -------------------------------------------------------------------
 def convert_price_to_amazon(mercari_price_str):
     try:
@@ -65,28 +65,24 @@ def safe_get_element_attribute(driver, selector, attribute, default=""):
         return default
 
 # -------------------------------------------------------------------
-# スクレイピングのメイン処理「心臓部」（ここは変更なし）
+# スクレイピングのメイン処理「心臓部」（変更なし）
 # -------------------------------------------------------------------
 def run_mercari_scraper(keyword, max_pages, user_id, supabase_client):
     yield f"[ログ] Supabaseから '{user_id}' のデータを読み込みます..."
     try:
         ng_sellers_data = supabase_client.table("ng_sellers").select("seller_name").eq("user_id", user_id).execute()
         ng_sellers = {item['seller_name'] for item in ng_sellers_data.data}
-
         ng_words_data = supabase_client.table("ng_words").select("word").eq("user_id", user_id).execute()
         ng_words = {item['word'] for item in ng_words_data.data}
-        
         processed_urls_data = supabase_client.table("processed_urls").select("url").eq("user_id", user_id).execute()
         processed_urls = {item['url'] for item in processed_urls_data.data}
-
         yield f"[ログ] NGセラー: {len(ng_sellers)}件, NGワード: {len(ng_words)}件, 処理済みURL: {len(processed_urls)}件"
     except Exception as e:
         yield f"[エラー] Supabaseからのデータ読み込みに失敗しました: {e}"
-        yield "[エラー] secrets.tomlの設定、またはSupabaseのテーブル名が正しいか確認してください。"
         return
 
     options = webdriver.ChromeOptions()
-    # options.add_argument('--headless') # 公開するときはここのコメントを外す！
+    options.add_argument('--headless') # 本番なのでコメントアウトを外す！
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
     options.add_argument('--disable-blink-features=AutomationControlled')
@@ -94,6 +90,8 @@ def run_mercari_scraper(keyword, max_pages, user_id, supabase_client):
     options.add_experimental_option('useAutomationExtension', False)
     options.add_argument('user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
     
+    # (ここは省略... 前のコードと全く同じだ)
+    # ...
     driver = webdriver.Chrome(options=options)
     search_url = f"https://www.mercari.com/jp/search/?keyword= {keyword.replace(' ', '%20')}"
     yield f"[ログ] 次のURLにアクセスします: {search_url}"
@@ -212,31 +210,50 @@ def run_mercari_scraper(keyword, max_pages, user_id, supabase_client):
     yield ok_items_to_db
 
 # -------------------------------------------------------------------
-# StreamlitのUI部分【超絶サイボーグ化】
+# StreamlitのUI部分【最終決戦バージョン】
 # -------------------------------------------------------------------
 st.set_page_config(page_title="メルカリお宝探しツール", layout="wide")
 
-# ▼▼▼ まずはSupabaseに接続！これが俺らの新しい武器庫だ！ ▼▼▼
-try:
-    conn = st.connection("supabase", type=SupabaseConnection)
-except Exception as e:
-    st.error("Supabaseへの接続に失敗したぜ！secrets.tomlの設定を確認してくれ！")
-    st.exception(e)
-    st.stop() # 接続できないなら、ここでストップ
+# ▼▼▼▼▼▼ ここが今回の改造の心臓部！ ▼▼▼▼▼▼
 
-# ▼▼▼ ここが神機能「st.user」を使った認証部分！ ▼▼▼
-# Streamlit Community Cloudにログインしてるかどうかチェックする
+# ステップ１：まず、Secretsがちゃんと読み込めてるか、画面に表示させて確認する
+st.header("デバッグ情報")
+try:
+    supabase_url = st.secrets["connections"]["supabase"]["url"]
+    supabase_key = st.secrets["connections"]["supabase"]["key"]
+    st.success("Secretsの読み込みに成功！")
+    st.write(f"URL: {supabase_url}")
+    # キーは全部表示すると危ないから、一部だけ表示する
+    st.write(f"Key: {supabase_key[:5]}...") 
+except Exception as e:
+    st.error("Secretsの読み込みに失敗したぜ！StreamlitのSecrets設定をもう一回確認してくれ！")
+    st.exception(e)
+    st.stop() # Secretsが読めないなら、ここで終わりだ
+
+# ステップ２：st.connectionを使わずに、直接Supabaseクライアントを作る
+try:
+    # 読み込んだURLとKeyを使って、直接クライアントを初期化する
+    conn: Client = create_client(supabase_url, supabase_key)
+    st.success("Supabaseクライアントの作成に成功！")
+except Exception as e:
+    st.error("Supabaseクライアントの作成に失敗！URLかKeyが間違ってる可能性が高いぜ！")
+    st.exception(e)
+    st.stop() # クライアントが作れないなら、ここで終わりだ
+
+# ▲▲▲▲▲▲ ここまでが最終診断コード ▲▲▲▲▲▲
+
+
+# --- 認証部分は変更なし ---
 if not st.user.email:
     st.warning("このアプリを使うには、まず右上のメニューからログインしてくれ！")
-    st.stop() # ログインしてないヤツは、ここで門前払いだ！
+    st.stop()
 
-# ログインしてたら、そのメアドを最強のユーザーIDとして使う！
 user_id = st.user.email
 st.success(f"ようこそ、{user_id}！準備はいいか？")
 
 
 # -------------------------------------------------------------------
-# NGリスト管理機能（サイドバーに実装！）
+# NGリスト管理機能（サイドバーに実装！）（変更なし）
 # -------------------------------------------------------------------
 with st.sidebar:
     st.header(f"⚙️ {user_id} の設定")
@@ -297,11 +314,12 @@ with st.sidebar:
 
 
 # -------------------------------------------------------------------
-# メイン画面（スクレイピング実行）
+# メイン画面（スクレイピング実行）（変更なし）
 # -------------------------------------------------------------------
 st.title('メルカリお宝探しツール（Web版）')
 st.markdown("メルカリから指定したキーワードで商品を検索し、条件に合うものだけをリストアップします。")
-
+# (ここは省略... 前のコードと全く同じだ)
+# ...
 with st.form("search_form"):
     st.info(f"`config.py` の設定をデフォルト値として使用しています。")
     keyword = st.text_input('1. 検索キーワードを入力してください', value=config.SEARCH_KEYWORD)
@@ -322,7 +340,6 @@ if submitted and not st.session_state.running:
         final_results = []
         log_text = ""
         
-        # ▼▼▼ run_mercari_scraperに、ユーザーIDとSupabaseクライアントを渡す！ ▼▼▼
         for result in run_mercari_scraper(keyword, max_pages, user_id, conn):
             if isinstance(result, str):
                 log_text += result + "\n"
@@ -345,7 +362,7 @@ if submitted and not st.session_state.running:
 
 
 # -------------------------------------------------------------------
-# 結果表示とExcelダウンロード部分（ここは変更なし！）
+# 結果表示とExcelダウンロード部分（変更なし）
 # -------------------------------------------------------------------
 if st.session_state.results:
     st.subheader('🎉 検索結果')
@@ -354,7 +371,6 @@ if st.session_state.results:
     
     if not df_raw.empty:
         # (この部分は前回と同じなので省略)
-        # (ちゃんと動くはずなので、心配するな！)
         wb = openpyxl.Workbook()
         ws = wb.active
         ws.title = "AmazonUpload"
