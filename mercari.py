@@ -244,12 +244,12 @@ except Exception as e:
 
 
 # --- 認証部分は変更なし ---
-if not st.user.email:
-    st.warning("このアプリを使うには、まず右上のメニューからログインしてくれ！")
-    st.stop()
+# if not st.user.email:
+#     st.warning("このアプリを使うには、まず右上のメニューからログインしてくれ！")
+#     st.stop()
 
-user_id = st.user.email
-st.success(f"ようこそ、{user_id}！準備はいいか？")
+# user_id = st.user.email
+# st.success(f"ようこそ、{user_id}！準備はいいか？")
 
 
 # -------------------------------------------------------------------
