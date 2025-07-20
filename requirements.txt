@@ -1,8 +1,6 @@
 streamlit
-selenium
+selenium==4.15.0
+webdriver-manager
 pandas
 openpyxl
-
-# Supabaseと連携するから、こいつらもリストに入れとくぜ！
-st-supabase-connection
 supabase

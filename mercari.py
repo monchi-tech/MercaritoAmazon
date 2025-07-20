@@ -12,6 +12,7 @@ from selenium.webdriver.support import expected_conditions as EC
 import pandas as pd
 import openpyxl
 import base64
+import os
 
 # ▼▼▼ 使う武器を変更！st.connectionの代わりに、もっと原始的な武器を使うぜ！ ▼▼▼
 from supabase import create_client, Client
@@ -65,7 +66,7 @@ def safe_get_element_attribute(driver, selector, attribute, default=""):
         return default
 
 # -------------------------------------------------------------------
-# スクレイピングのメイン処理「心臓部」（変更なし）
+# スクレイピングのメイン処理「心臓部」（修正版）
 # -------------------------------------------------------------------
 def run_mercari_scraper(keyword, max_pages, user_id, supabase_client):
     yield f"[ログ] Supabaseから '{user_id}' のデータを読み込みます..."
@@ -81,16 +82,44 @@ def run_mercari_scraper(keyword, max_pages, user_id, supabase_client):
         yield f"[エラー] Supabaseからのデータ読み込みに失敗しました: {e}"
         return
 
+    # Streamlit Cloud用のChrome設定
     options = webdriver.ChromeOptions()
-    options.add_argument('--headless') # 本番なのでコメントアウトを外す！
+    options.add_argument('--headless')
     options.add_argument('--no-sandbox')
     options.add_argument('--disable-dev-shm-usage')
+    options.add_argument('--disable-gpu')
+    options.add_argument('--disable-features=NetworkService')
+    options.add_argument('--disable-features=VizDisplayCompositor')
     options.add_argument('--disable-blink-features=AutomationControlled')
     options.add_experimental_option("excludeSwitches", ["enable-automation"])
     options.add_experimental_option('useAutomationExtension', False)
     options.add_argument('user-agent=Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36')
+        # Streamlit Cloud環境の判定と対応
+    if os.path.exists('/home/adminuser/venv'):
+        # Streamlit Cloud環境
+        options.binary_location = '/usr/bin/chromium'
+        options.add_argument('--single-process')
+        options.add_argument('--disable-setuid-sandbox')
+        
+        # ChromeDriverのパスを明示的に指定
+        from selenium.webdriver.chrome.service import Service
+        service = Service('/usr/bin/chromedriver')
+        
+        try:
+            driver = webdriver.Chrome(service=service, options=options)
+        except Exception as e:
+            yield f"[エラー] ChromeDriver初期化エラー: {str(e)}"
+            yield "[ヒント] Streamlit Cloud環境でのSelenium実行に問題があります。"
+            return
+    else:
+        # ローカル環境
+        try:
+            driver = webdriver.Chrome(options=options)
+        except Exception as e:
+            yield f"[エラー] ChromeDriver初期化エラー: {str(e)}"
+            yield "[ヒント] ChromeDriverがインストールされているか確認してください。"
+            return
     
-    driver = webdriver.Chrome(options=options)
     search_url = f"https://www.mercari.com/jp/search/?keyword=  {keyword.replace(' ', '%20')}"
     yield f"[ログ] 次のURLにアクセスします: {search_url}"
     driver.get(search_url)
@@ -116,7 +145,8 @@ def run_mercari_scraper(keyword, max_pages, user_id, supabase_client):
                 scroll_count += 1
             if scroll_count >= max_scrolls:
                 yield "[警告] スクロール回数が上限に達しました。処理を続行します。"
-                item_list_elements = driver.find_elements(By.CSS_SELECTOR, 'li[data-testid="item-cell"] a')
+
+            item_list_elements = driver.find_elements(By.CSS_SELECTOR, 'li[data-testid="item-cell"] a')
             for a_tag in item_list_elements:
                 href = a_tag.get_attribute('href')
                 if href and '/item/' in href:
@@ -146,8 +176,7 @@ def run_mercari_scraper(keyword, max_pages, user_id, supabase_client):
         return
     
     yield f"\n--- 全URL取得完了。{len(new_links_to_process)} 件の新しい商品をチェックします ---"
-    
-    ok_items_to_db = []
+        ok_items_to_db = []
     ng_items_to_db = []
 
     for i, url in enumerate(new_links_to_process, 1):
@@ -248,8 +277,7 @@ st.title("🔐 ログイン")
 if 'authenticated' not in st.session_state:
     st.session_state.authenticated = False
     st.session_state.user_id = None
-
-# ログイン画面
+    # ログイン画面
 if not st.session_state.authenticated:
     with st.form("login_form"):
         st.markdown("### メールアドレスでログイン")
@@ -371,8 +399,7 @@ with st.form("search_form"):
     keyword = st.text_input('1. 検索キーワードを入力してください', value=config.SEARCH_KEYWORD)
     max_pages = st.number_input('2. 何ページまで検索しますか？', min_value=1, max_value=20, value=config.MAX_PAGES)
     submitted = st.form_submit_button("お宝探し スタート！")
-
-if 'running' not in st.session_state: st.session_state.running = False
+    if 'running' not in st.session_state: st.session_state.running = False
 if 'results' not in st.session_state: st.session_state.results = []
 
 if submitted and not st.session_state.running:
