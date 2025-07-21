@@ -340,8 +340,18 @@ with st.sidebar:
     st.subheader("🚫 NGセラーリスト")
     try:
         sellers = conn.table("ng_sellers").select("id, seller_name").eq("user_id", user_id).execute().data
-        seller_df = pd.DataFrame(sellers).set_index("id")
-        st.dataframe(seller_df, use_container_width=True)
+        if sellers:
+            seller_df = pd.DataFrame(sellers)
+            # idカラムが存在するか確認
+            if 'id' in seller_df.columns:
+                seller_df = seller_df.set_index("id")
+                st.dataframe(seller_df, use_container_width=True)
+            else:
+                st.warning("NGセラーテーブルに'id'カラムが見つかりません。")
+                st.dataframe(pd.DataFrame(sellers), use_container_width=True)
+        else:
+            seller_df = pd.DataFrame()
+            st.info("NGセラーは登録されていません。")
 
         with st.form("add_seller_form", clear_on_submit=True):
             new_seller = st.text_input("追加するNGセラー名")
@@ -351,7 +361,7 @@ with st.sidebar:
                     st.toast(f"「{new_seller}」を追加したぜ！")
                     st.rerun()
 
-        if not seller_df.empty:
+        if not seller_df.empty and 'id' in seller_df.index.names:
             seller_to_delete = st.selectbox("削除するNGセラーを選択", options=seller_df.index, format_func=lambda x: seller_df.loc[x, "seller_name"], index=None)
             if st.button("削除", type="primary"):
                 if seller_to_delete is not None:
@@ -363,12 +373,25 @@ with st.sidebar:
     except Exception as e:
         st.error(f"NGセラーの読み込みに失敗: {e}")
 
+    except Exception as e:
+        st.error(f"NGセラーの読み込みに失敗: {e}")
+
     # --- NGワード管理 ---
     st.subheader("🤫 NGワードリスト")
     try:
         words = conn.table("ng_words").select("id, word").eq("user_id", user_id).execute().data
-        word_df = pd.DataFrame(words).set_index("id")
-        st.dataframe(word_df, use_container_width=True)
+        if words:
+            word_df = pd.DataFrame(words)
+            # idカラムが存在するか確認
+            if 'id' in word_df.columns:
+                word_df = word_df.set_index("id")
+                st.dataframe(word_df, use_container_width=True)
+            else:
+                st.warning("NGワードテーブルに'id'カラムが見つかりません。")
+                st.dataframe(pd.DataFrame(words), use_container_width=True)
+        else:
+            word_df = pd.DataFrame()
+            st.info("NGワードは登録されていません。")
 
         with st.form("add_word_form", clear_on_submit=True):
             new_word = st.text_input("追加するNGワード")
@@ -378,7 +401,7 @@ with st.sidebar:
                     st.toast(f"「{new_word}」を追加したぜ！")
                     st.rerun()
 
-        if not word_df.empty:
+        if not word_df.empty and 'id' in word_df.index.names:
             word_to_delete = st.selectbox("削除するNGワードを選択", options=word_df.index, format_func=lambda x: word_df.loc[x, "word"], index=None)
             if st.button("削除", type="primary", key="delete_word"):
                 if word_to_delete is not None:
