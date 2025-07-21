@@ -176,7 +176,7 @@ def run_mercari_scraper(keyword, max_pages, user_id, supabase_client):
         return
     
     yield f"\n--- 全URL取得完了。{len(new_links_to_process)} 件の新しい商品をチェックします ---"
-        ok_items_to_db = []
+    ok_items_to_db = []
     ng_items_to_db = []
 
     for i, url in enumerate(new_links_to_process, 1):
